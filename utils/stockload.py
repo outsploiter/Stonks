@@ -63,7 +63,7 @@ class DBUtils:
             conn.commit()
             self.logger.info(f"Upsert into stock base successful for {stock_df.shape[0]} rows")
         except (Exception, Error) as err:
-            self.logger.error(f"Could not upsert into Stock Base\n{query}", exc_info=True)
+            self.logger.error(f"Could not upsert into Stock Base\n{query}\n{err}", exc_info=True)
         finally:
             conn.close()
             cursor.close()
@@ -87,6 +87,10 @@ class IndexUtils:
         self.logger.info(f"Processing Index {self.name}")
 
     def get_stock_details(self):
+        """
+        This function acts as a driver to get stock detail from a particular index
+        :return: dataframe with must-have columns in index_base
+        """
         self.logger.debug(f"Starting to get data from link {self.link}")
         if self.link_type.lower() == 'csv' and 'csv' in self.link.lower():
             csv_df = self.get_csv_data()
@@ -123,4 +127,4 @@ class IndexUtils:
             self.logger.debug(f"Successfully formatted the csv_df from {self.name}")
             return csv_df[required_cols]
         except KeyError as e:
-            self.logger.error("Could not create/rename columns from csv_df", exc_info=True)
+            self.logger.error(f"Could not create/rename columns from csv_df \n{e}", exc_info=True)
