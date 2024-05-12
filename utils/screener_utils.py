@@ -1,4 +1,5 @@
 import json
+import random
 import re
 
 import logging
@@ -13,6 +14,15 @@ from fp.fp import FreeProxy
 SEARCH_API = "https://www.screener.in/api/company/search/?q="
 SCREENER_URL = "https://www.screener.in"
 
+file_path = r'C:\Users\suwee\CodeBase\_ Personal Projects\Stonks\proxies.txt'
+
+proxies = []
+with open(file_path, 'r') as file:
+    for line in file:
+        line = line.strip()  # Remove extra whitespace characters
+        if line:
+            proxies.append(line)
+
 
 class Screener:
     """
@@ -25,7 +35,11 @@ class Screener:
         self.logger.info(f"Invoked Screener Module for {ticker}")
         self.name = name
         self.ticker = ticker
+        random_number = random.randint(0, len(proxies)-1)
         self.session = session()
+        self.proxy = proxies[random_number]
+        session().proxies['http'] = f'http://{self.proxy}'
+        session().proxies['https'] = f'https://{self.proxy}'
         retries = Retry(total=3,
                         backoff_factor=0.1,
                         status_forcelist=[500, 502, 503, 504, 400, 401, 402, 403])
@@ -41,19 +55,26 @@ class Screener:
         """
         try:
             response = self.session.get(SEARCH_API + self.ticker)
-            search_list =  response.json()
+            if response.status_code == 200:
+                print(f"Proxy {self.proxy} is working.")
+            search_list = response.json()
             if len(search_list) == 0:
                 response = self.session.get(SEARCH_API + self.name)
                 search_list = response.json()
             return search_list[0]['url']
-        except:
-            print(response.json())
+        except Exception as e:
+            print('getting url', e)
+            print(response)
             sys.exit()
 
     def get_soup(self):
-        self.url = self.session.get(self.url).text
-        soup = BeautifulSoup(self.url, "html.parser")
-        return soup
+        try:
+            self.url = self.session.get(self.url).text
+            soup = BeautifulSoup(self.url, "html.parser")
+            return soup
+        except Exception as e:
+            print("getting soup", e)
+            sys.exit()
 
     def stock_information(self):
         """
