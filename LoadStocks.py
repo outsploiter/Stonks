@@ -25,13 +25,19 @@ def main():
         logger.info("Completed Loading Stocks ")
         sector_less_stocks = db_utils.get_stock_without_sector(index_id=1)
         logger.info("Loading sector info")
+
         for i, row in enumerate(sector_less_stocks):
             try:
-                sc = Screener(row[2])
+                sc = Screener(row[1], row[2])
                 stock_info = sc.stock_information()
                 db_utils.update_stock_sector([stock_info["sector"], stock_info["industry"], stock_info["about"], row[0]])
             except Exception as e:
+                failures.append(row)
                 logger.error(e)
 
 if __name__ == '__main__':
-    main()
+    failures = []
+    try:
+        main()
+    except KeyboardInterrupt:
+        print(failures)

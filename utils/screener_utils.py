@@ -4,7 +4,8 @@ import re
 import logging
 import sys
 
-import requests
+from requests import Session, session
+from requests.adapters import HTTPAdapter, Retry
 from bs4 import BeautifulSoup
 
 from fp.fp import FreeProxy
@@ -19,31 +20,45 @@ class Screener:
     :param ticker: symbol of stock
     """
 
-    def __init__(self, ticker):
+    def __init__(self, ticker, name):
         self.logger = logging.getLogger(__name__)
         self.logger.info(f"Invoked Screener Module for {ticker}")
+        self.name = name
         self.ticker = ticker
+        self.session = session()
+        retries = Retry(total=3,
+                        backoff_factor=0.1,
+                        status_forcelist=[500, 502, 503, 504, 400, 401, 402, 403])
+        self.session.mount('https://', HTTPAdapter(max_retries=retries))
+        self.session.timeout = 30  # timeout for 30 seconds
         self.url = SCREENER_URL + self._get_url()
         self.soup = self.get_soup()
-        self.proxy = FreeProxy().get()
-        self.logger.info(f'{self.ticker} : {self.proxy}')
 
     def _get_url(self):
         """
         Encapsulated function to get url for a particular stock from the screener site
         :return:
         """
-        response = requests.get(SEARCH_API + self.ticker)
-        return response.json()[0]['url']
+        try:
+            response = self.session.get(SEARCH_API + self.ticker)
+            search_list =  response.json()
+            if len(search_list) == 0:
+                response = self.session.get(SEARCH_API + self.name)
+                search_list = response.json()
+            return search_list[0]['url']
+        except:
+            print(response.json())
+            sys.exit()
 
     def get_soup(self):
-        self.url = requests.get(self.url).text
+        self.url = self.session.get(self.url).text
         soup = BeautifulSoup(self.url, "html.parser")
         return soup
 
     def stock_information(self):
         """
-        Retrieves stock information from the self.soup object and returns a dictionary containing the following information:
+        Retrieves stock information from the self.soup object and
+        returns a dictionary containing the following information:
 
         Parameters:
         - self: The instance of the class.
