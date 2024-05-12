@@ -10,8 +10,6 @@ import psycopg2
 from psycopg2 import Error
 import pandas as pd
 
-from .screener_utils import Screener
-
 
 class DBUtils:
     def __init__(self):
@@ -76,7 +74,7 @@ class DBUtils:
     def get_stock_without_sector(self, index_id):
         conn = self.get_connection(self.db_params)
         cursor = conn.cursor()
-        query = f"""select stock_id, symbol
+        query = f"""select stock_id, symbol, name
                             from stock_base 
                             where sector is null
                             and index_id = {index_id}

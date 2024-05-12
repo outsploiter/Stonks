@@ -27,7 +27,7 @@ def main():
         logger.info("Loading sector info")
         for i, row in enumerate(sector_less_stocks):
             try:
-                sc = Screener(row[1])
+                sc = Screener(row[2])
                 stock_info = sc.stock_information()
                 db_utils.update_stock_sector([stock_info["sector"], stock_info["industry"], stock_info["about"], row[0]])
             except Exception as e:
