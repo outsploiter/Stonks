@@ -53,6 +53,7 @@ class Screener:
         Encapsulated function to get url for a particular stock from the screener site
         :return:
         """
+        response = None
         try:
             response = self.session.get(SEARCH_API + self.ticker)
             if response.status_code == 200:
