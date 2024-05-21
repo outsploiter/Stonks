@@ -1,5 +1,7 @@
 import json
 import os
+import sys
+from time import sleep
 
 import dotenv
 import logging
@@ -14,10 +16,11 @@ class DBUtils:
         self.logger = logging.getLogger(__name__)
         dotenv.load_dotenv()
         self.logger.debug("DB Utils Initiated")
+        self.db_params = json.loads(os.getenv("STONKS_DB_CREDS").replace("'", "\""))
 
     def get_connection(self, db_params):
         try:
-            connection = psycopg2.connect(**db_params)
+            connection = psycopg2.connect(**self.db_params)
             self.logger.debug("Connection Created!")
             return connection
         except (Exception, Error) as error:
@@ -43,8 +46,7 @@ class DBUtils:
             self.logger.debug("Closing Stonks DB connections")
 
     def upsert_stocks(self, stock_df):
-        db_params = json.loads(os.getenv("STONKS_DB_CREDS").replace("'", "\""))
-        conn = self.get_connection(db_params)
+        conn = self.get_connection(self.db_params)
         cursor = conn.cursor()
 
         query = f"""
@@ -63,7 +65,101 @@ class DBUtils:
             conn.commit()
             self.logger.info(f"Upsert into stock base successful for {stock_df.shape[0]} rows")
         except (Exception, Error) as err:
-            self.logger.error(f"Could not upsert into Stock Base\n{query}\n{err}", exc_info=True)
+            self.logger.error(f"Could not upsert into Stock Base\n{query}\n{data}\n{err}", exc_info=True)
+        finally:
+            conn.close()
+            cursor.close()
+            self.logger.debug("Closing Stonks DB connections")
+
+    def get_stock_without_sector(self, index_id):
+        conn = self.get_connection(self.db_params)
+        cursor = conn.cursor()
+        query = f"""select stock_id, symbol, name
+                            from stock_base 
+                            where sector is null
+                            and index_id = {index_id}
+                            """
+        try:
+            cursor.execute(query)
+            result = cursor.fetchall()
+            self.logger.debug("Fetch from Stock Base Successful")
+            return result
+        except (Exception, Error):
+            self.logger.critical(f"Could not fetch from Stock Base\n{query}", exc_info=True)
+        finally:
+            cursor.close()
+            conn.close()
+            self.logger.debug("Closing Stonks DB connections")
+
+    def update_stock_sector(self, data):
+        conn = self.get_connection(self.db_params)
+        cursor = conn.cursor()
+        # ("UPDATE your_table SET column1 = %s, column2 = %s WHERE condition_column = %s")
+        query = f"""
+                UPDATE public.stock_base 
+                set sector = %s,
+                industry = %s,
+                about = %s
+                WHERE stock_id = %s
+                """
+        try:
+            # Execute the upsert operation
+            cursor.execute(query, data)
+            conn.commit()
+            self.logger.info(f"Upsert successful stock_id: {data[-1]}")
+        except (Exception, Error) as err:
+            self.logger.error(f"Could not upsert into Stock Base\n{query}\n{data}\n{err}", exc_info=True)
+            sys.exit()
+        finally:
+            conn.close()
+            cursor.close()
+            self.logger.debug("Closing Stonks DB connections")
+
+    def get_stock_urls(self, index_id):
+        conn = self.get_connection(self.db_params)
+        cursor = conn.cursor()
+
+        query = f"""
+        SELECT sector, 
+           ARRAY_AGG('https://www.screener.in/company/' || symbol || '/consolidated/') AS urls,
+           ARRAY_AGG(sb.stock_id) AS stock_ids
+        FROM stock_base sb
+        LEFT JOIN raw_soup_base rsb ON sb.stock_id = rsb.stock_id 
+        WHERE sb.index_id = 1
+          AND (rsb.stock_id IS NULL OR now() - rsb.modifiedon > INTERVAL '1 month')
+        GROUP BY sector
+        ORDER BY COUNT(symbol) DESC;
+        """
+        try:
+            cursor.execute(query)
+            result = cursor.fetchall()
+            self.logger.debug("Fetch URLs from Stock Base Successful")
+            return result
+        except (Exception, Error):
+            self.logger.critical(f"Could not fetch from Stock Base\n{query}", exc_info=True)
+        finally:
+            cursor.close()
+            conn.close()
+            self.logger.debug("Closing Stonks DB connections")
+
+    def upsert_soup(self, stock_id, soup):
+        print(f'Upserting {stock_id} : soup length->{len(soup)}')
+        conn = self.get_connection(self.db_params)
+        cursor = conn.cursor()
+
+        query = """
+        INSERT INTO raw_soup_base (stock_id, screener_soup, modifiedon)
+        VALUES (%s, %s, current_date)
+        ON CONFLICT (stock_id) DO UPDATE SET
+            screener_soup = EXCLUDED.screener_soup,
+            modifiedon = CURRENT_DATE;
+        """
+        try:
+            cursor.execute(query, (stock_id, soup))
+            conn.commit()
+            self.logger.info(f"Upsert into soup base successful for {stock_id}")
+        except (Exception, Error) as err:
+            self.logger.error(f"Could not upsert into Stock Base\n{query}\n{soup}\n{err}", exc_info=True)
         finally:
             conn.close()
             cursor.close()
