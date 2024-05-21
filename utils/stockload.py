@@ -115,6 +115,56 @@ class DBUtils:
             cursor.close()
             self.logger.debug("Closing Stonks DB connections")
 
+    def get_stock_urls(self, index_id):
+        conn = self.get_connection(self.db_params)
+        cursor = conn.cursor()
+
+        query = f"""
+        SELECT sector, 
+           ARRAY_AGG('https://www.screener.in/company/' || symbol || '/consolidated/') AS urls,
+           ARRAY_AGG(sb.stock_id) AS stock_ids
+        FROM stock_base sb
+        LEFT JOIN raw_soup_base rsb ON sb.stock_id = rsb.stock_id 
+        WHERE sb.index_id = 1
+          AND (rsb.stock_id IS NULL OR now() - rsb.modifiedon > INTERVAL '1 month')
+        GROUP BY sector
+        ORDER BY COUNT(symbol) DESC;
+        """
+        try:
+            cursor.execute(query)
+            result = cursor.fetchall()
+            self.logger.debug("Fetch URLs from Stock Base Successful")
+            return result
+        except (Exception, Error):
+            self.logger.critical(f"Could not fetch from Stock Base\n{query}", exc_info=True)
+        finally:
+            cursor.close()
+            conn.close()
+            self.logger.debug("Closing Stonks DB connections")
+
+    def upsert_soup(self, stock_id, soup):
+        print(f'Upserting {stock_id} : soup length->{len(soup)}')
+        conn = self.get_connection(self.db_params)
+        cursor = conn.cursor()
+
+        query = """
+        INSERT INTO raw_soup_base (stock_id, screener_soup, modifiedon)
+        VALUES (%s, %s, current_date)
+        ON CONFLICT (stock_id) DO UPDATE SET
+            screener_soup = EXCLUDED.screener_soup,
+            modifiedon = CURRENT_DATE;
+        """
+        try:
+            cursor.execute(query, (stock_id, soup))
+            conn.commit()
+            self.logger.info(f"Upsert into soup base successful for {stock_id}")
+        except (Exception, Error) as err:
+            self.logger.error(f"Could not upsert into Stock Base\n{query}\n{soup}\n{err}", exc_info=True)
+        finally:
+            conn.close()
+            cursor.close()
+            self.logger.debug("Closing Stonks DB connections")
+
 
 class IndexUtils:
     def __init__(self, index):
