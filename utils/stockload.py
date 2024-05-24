@@ -20,7 +20,7 @@ class DBUtils:
 
     def get_connection(self, db_params):
         try:
-            connection = psycopg2.connect(**self.db_params)
+            connection = psycopg2.connect(**db_params)
             self.logger.debug("Connection Created!")
             return connection
         except (Exception, Error) as error:
@@ -125,7 +125,7 @@ class DBUtils:
            ARRAY_AGG(sb.stock_id) AS stock_ids
         FROM stock_base sb
         LEFT JOIN raw_soup_base rsb ON sb.stock_id = rsb.stock_id 
-        WHERE sb.index_id = 1
+        WHERE sb.index_id = index_id
           AND (rsb.stock_id IS NULL OR now() - rsb.modifiedon > INTERVAL '1 month')
         GROUP BY sector
         ORDER BY COUNT(symbol) DESC;
