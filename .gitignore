@@ -241,7 +241,7 @@ fabric.properties
 
 
 # Custom Ignores
-/dicussions/
+/discussions/
 /rough_fancy_logger.py
 /rough*
 /proxies.txt
