@@ -125,7 +125,7 @@ class DBUtils:
            ARRAY_AGG(sb.stock_id) AS stock_ids
         FROM stock_base sb
         LEFT JOIN raw_soup_base rsb ON sb.stock_id = rsb.stock_id 
-        WHERE sb.index_id = index_id
+        WHERE sb.index_id = {index_id}
           AND (rsb.stock_id IS NULL OR now() - rsb.modifiedon > INTERVAL '1 month')
         GROUP BY sector
         ORDER BY COUNT(symbol) DESC;
@@ -163,6 +163,28 @@ class DBUtils:
         finally:
             conn.close()
             cursor.close()
+            self.logger.debug("Closing Stonks DB connections")
+
+    def get_soup_base(self):
+        conn = self.get_connection(self.db_params)
+        cursor = conn.cursor()
+
+        query = f"""
+                select stock_id, screener_soup
+                from raw_soup_base
+                where  now() - modifiedon < INTERVAL '1 month'
+                order by stock_id
+                """
+        try:
+            cursor.execute(query)
+            result = cursor.fetchall()
+            self.logger.debug("Fetch URLs from Raw Soup Base Successful")
+            return result
+        except (Exception, Error):
+            self.logger.critical(f"Could not fetch from Raw Soup Base\n{query}", exc_info=True)
+        finally:
+            cursor.close()
+            conn.close()
             self.logger.debug("Closing Stonks DB connections")
 
 
