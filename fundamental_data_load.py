@@ -9,7 +9,8 @@ from queue import Queue
 import requests
 from bs4 import BeautifulSoup
 
-from utils import proxy_scraper, proxy_checker, stockload
+from utils import proxy_scraper, proxy_checker, stockload, extract_yearly_data
+
 
 INDEX_ID = 1
 db_utils = stockload.DBUtils()
@@ -35,7 +36,7 @@ def load_proxies(proxies_file):
 
 def load_user_agents(user_agents_file):
     user_agents = []
-    with open("user_agents.txt", "r") as f:
+    with open(user_agents_file, "r") as f:
         for line in f:
             user_agents.append(line.replace("\n", ""))
     return user_agents
@@ -54,11 +55,28 @@ def fetch_url(queue, proxy_list, user_agent_list):
             response = requests.get(url, timeout=10, headers=headers)
             print('Response:', response.status_code)
             if response.status_code == 200:
-                soup = BeautifulSoup(response.content, 'html.parser').prettify()
+                soup = BeautifulSoup(response.content, 'lxml')
                 if soup == '':
                     print(f'Check this URL -> returned empty content')
                     continue
+                col_headers, yearly_data, is_standalone = extract_yearly_data.extract_yearly_data_from_soup(soup)
+                if is_standalone:
+                    print(f"Processing Standalone: {stock_id}->{url.replace('/consolidated/', '/')}")
+                    response = requests.get(url.replace('/consolidated/', '/'), timeout=10, headers=headers)
+                    print('Response:', response.status_code)
+                    if response.status_code == 200:
+                        soup = BeautifulSoup(response.content, 'lxml')
+                        if soup == '':
+                            print(f'Check this URL -> returned empty content')
+                            continue
+                        col_headers, yearly_data, is_standalone = \
+                            extract_yearly_data.extract_yearly_data_from_soup(soup)
+                    if is_standalone:
+                        print(f"soup is still doubtful {url.replace('/consolidated/', '/')}\n")
+                        continue
                 db_utils.upsert_soup(stock_id, str(soup))
+                db_utils.upsert_yearly_fundamentals(stock_id, col_headers, yearly_data)
+                print()
             else:
                 print(f"Failed to fetch url with status code {response.status_code} with proxy : {proxy_str}")
             time.sleep(1)
@@ -75,25 +93,25 @@ def scrape_soup(sector, urls, stock_id_list, proxies, user_agents):
         queue.put((stock_id_list[index], url))
 
     # Define the number of threads
-    # num_threads = min(len(urls), 5)
+    num_threads = min(len(urls), 3)
 
     # Create and start threads
-    # threads = []
-    # for i in range(num_threads):
-    #     try:
-    #         thread = threading.Thread(target=fetch_url, args=(queue, proxies, user_agents))
-    #         thread.start()
-    #         threads.append(thread)
-    #     except Exception as e:
-    #         print(f"Failed to scrape proxy: {proxies}: {e}")
-    #         continue
-    #
-    # # Wait for all threads to complete
-    # for thread in threads:
-    #     thread.join()
+    threads = []
+    for i in range(num_threads):
+        try:
+            thread = threading.Thread(target=fetch_url, args=(queue, proxies, user_agents))
+            thread.start()
+            threads.append(thread)
+        except Exception as e:
+            print(f"Failed to scrape proxy: {proxies}: {e}")
+            continue
+
+    # Wait for all threads to complete
+    for thread in threads:
+        thread.join()
 
     # Without Threads
-    fetch_url(queue, proxies, user_agents)
+    # fetch_url(queue, proxies, user_agents)
 
     print("Scraping completed for sector: {}".format(sector))
 

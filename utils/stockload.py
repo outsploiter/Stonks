@@ -126,14 +126,14 @@ class DBUtils:
         FROM stock_base sb
         LEFT JOIN raw_soup_base rsb ON sb.stock_id = rsb.stock_id 
         WHERE sb.index_id = {index_id}
-          AND (rsb.stock_id IS NULL OR now() - rsb.modifiedon > INTERVAL '1 month')
+          AND (rsb.stock_id IS NULL OR now() - rsb.modifiedon > INTERVAL '15 day')
         GROUP BY sector
         ORDER BY COUNT(symbol) DESC;
         """
         try:
             cursor.execute(query)
             result = cursor.fetchall()
-            self.logger.debug("Fetch URLs from Stock Base Successful")
+            self.logger.debug(f"Fetch URLs from Stock Base Successful no of records:{len(result)} records")
             return result
         except (Exception, Error):
             self.logger.critical(f"Could not fetch from Stock Base\n{query}", exc_info=True)
@@ -185,6 +185,55 @@ class DBUtils:
         finally:
             cursor.close()
             conn.close()
+            self.logger.debug("Closing Stonks DB connections")
+
+    def upsert_yearly_fundamentals(self, stock_id, col_headers, yearly_data):
+        print(f'Upserting {stock_id} : fundamental data for {len(yearly_data.keys())} years')
+        conn = self.get_connection(self.db_params)
+        cursor = conn.cursor()
+
+        columns = ', '.join(col_headers)
+
+        # Generating the placeholders for values
+        value_placeholders = ', '.join(['%s'] * len(col_headers))
+
+        # Generating the SQL query template
+        query = f"""
+            INSERT INTO yearly_financial_data (
+                stock_id,
+                year,
+                {columns}
+            )
+            VALUES
+                (%s, %s, {value_placeholders})
+            ON CONFLICT (stock_id, year) DO UPDATE
+            SET
+            """
+
+        # Constructing the SET part of the query for update
+        update_values = ', '.join([f"{col} = EXCLUDED.{col}" for col in col_headers])
+
+        # Adding the SET part to the query template
+        query += update_values
+
+        # Initializing a list to hold the values for insertion
+        values = []
+
+        # Iterating over yearly_data to populate values
+        for year, data in yearly_data.items():
+            # Constructing the values list for each year
+            year_values = [stock_id, year, *data]
+            values.append(year_values)
+
+        try:
+            cursor.executemany(query, values)
+            conn.commit()
+            self.logger.info(f"Upsert into soup base successful for {stock_id} ")
+        except (Exception, Error) as err:
+            self.logger.error(f"Could not upsert into Stock Base\n{query}\n\n{err}", exc_info=True)
+        finally:
+            conn.close()
+            cursor.close()
             self.logger.debug("Closing Stonks DB connections")
 
 

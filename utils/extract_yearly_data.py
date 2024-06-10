@@ -7,7 +7,10 @@ from utils.stockload import DBUtils
 
 def extract_section_data(soup, section_id, data_tab_id=None):
     current_year = datetime.now().year
-    section = soup.find('section', id=section_id)
+    try:
+        section = soup.find('section', id=section_id)
+    except TypeError as e:
+        print("soup is invalid", e)
     if not section:
         raise ValueError(f"Section with id '{section_id}' not found in the HTML content.")
 
@@ -22,8 +25,26 @@ def extract_section_data(soup, section_id, data_tab_id=None):
     if not table:
         raise ValueError(f"Table not found in section with id '{section_id}' and tab '{data_tab_id}'.")
 
-    headers = [int(header.get_text(strip=True).strip().split(' ')[-1]) for header in table.find('thead').find_all('th')
-               if header.get_text(strip=True) != '']
+    headers = []
+    ttm_flag = False
+    for header in table.find('thead').find_all('th'):
+        header_text = header.get_text(strip=True)
+        if header_text == '':
+            continue
+        header_number = header_text.strip().split(' ')[-1]
+        if header_number.isdigit():
+            headers.append(int(header_number))
+        elif header_text == 'TTM':
+            ttm_flag = True
+        else:
+            print(f"Critical input fount: {header_text}")
+
+    doubt = False
+    if (current_year not in headers and current_year-1 not in headers) or (len(headers) < 2):
+        doubt = True
+    if ttm_flag and headers:
+        max_year = max(headers)
+        headers.append(max_year+1)
 
     rows = []
     row_header = []
@@ -33,7 +54,14 @@ def extract_section_data(soup, section_id, data_tab_id=None):
         temp = [float(value) if value != '' else 0 for value in row_data[1:]]
         rows.append(temp)
         if row_data[0] != '':
-            row_header.append(row_data[0].strip().replace(' ', '_'))
+            curr_header = row_data[0].strip().replace(' ', '_').replace('.', '').strip()
+            if curr_header == 'Revenue':
+                curr_header = 'Sales'
+            elif curr_header == 'Financing_Profit':
+                curr_header = 'Operating_Profit'
+            elif curr_header == 'Financing_Margin':
+                curr_header = 'OPM'
+            row_header.append(curr_header)
 
     # Transpose the data and filter out rows where all values are empty and year is within the last 10 years
     # transposed_data = [row for row in zip(headers, *rows) if
@@ -41,11 +69,14 @@ def extract_section_data(soup, section_id, data_tab_id=None):
 
     transposed_data = {header: [row[i] for row in rows if row[i] != ''] for i, header in enumerate(headers)}
 
-    return row_header, transposed_data
+    return row_header, transposed_data, doubt
 
 
-def extract_yearly_data(html):
-    soup = BeautifulSoup(html, "html.parser")
+def extract_yearly_data_from_soup(html, parse=False):
+    if parse:
+        soup = BeautifulSoup(html, "lxml")
+    else:
+        soup = html
     # Yearly Sections
     sections = {
         'Profit Loss': ('profit-loss', None),
@@ -59,9 +90,14 @@ def extract_yearly_data(html):
     years = set()
     col_headers = []
     yearly_data = dict()
-
+    doubt_list = []
     for section, args in sections.items():
-        headers, data = extract_section_data(soup, *args)
+        headers, data, doubt = extract_section_data(soup, *args)
+        if section != 'Shareholding Pattern Data' and doubt:
+            return None, None, doubt
+        elif section == 'Shareholding Pattern Data':
+            doubt = False
+        doubt_list.append(doubt)
         section_data[section] = (headers, data)
         years.update(data.keys())
         col_headers.extend(headers)
@@ -74,16 +110,4 @@ def extract_yearly_data(html):
             temp.extend(data.get(year, default_list))
         yearly_data[year] = temp
 
-    return col_headers, yearly_data
-
-
-def main():
-    db_utils = DBUtils()
-    soup_data = db_utils.get_soup_base()
-    for record in soup_data:
-        col_headers, yearly_data = extract_yearly_data(record[1])
-        # db_utils.upsert_yearly_fundamentals(col_headers, yearly_data)
-
-
-if __name__ == '__main__':
-    main()
+    return col_headers, yearly_data, any(doubt_list)
