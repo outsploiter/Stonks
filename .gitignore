@@ -246,3 +246,4 @@ fabric.properties
 /rough*
 /proxies.txt
 *.ipynb
+/utils/rough.html
