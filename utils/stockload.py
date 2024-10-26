@@ -126,7 +126,7 @@ class DBUtils:
         FROM stock_base sb
         LEFT JOIN raw_soup_base rsb ON sb.stock_id = rsb.stock_id 
         WHERE sb.index_id = {index_id}
-          AND (rsb.stock_id IS NULL OR now() - rsb.modifiedon > INTERVAL '15 day')
+          AND (rsb.stock_id IS NULL OR now() - rsb.modifiedon > INTERVAL '3 day')
         GROUP BY sector
         ORDER BY COUNT(symbol) DESC;
         """

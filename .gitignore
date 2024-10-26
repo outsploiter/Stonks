@@ -242,8 +242,8 @@ fabric.properties
 
 # Custom Ignores
 /discussions/
-/rough_fancy_logger.py
+/discussions/trial_runs/rough_fancy_logger.py
 /rough*
-/proxies.txt
+/proxies.txt 
 *.ipynb
 /utils/rough.html
